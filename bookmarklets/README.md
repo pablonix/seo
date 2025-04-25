@@ -15,7 +15,7 @@ ${l.length?`<div style="background:#e53e3e20;padding:10px;border-radius:4px;marg
 
 Minified
 ```
-
+!function(){const e={debug:!0,limits:{url:256,title:100,description:300},colors:{error:"#ff5555",warning:"#ff9d00",success:"#55ff55",info:"#55aaff",optional:"#55ccaa",text:"#ffffff",bg:"#1a1a1a",panel:"#252525"},requirements:{og:{required:["og:title","og:type","og:image","og:url"],important:["og:description"],recommended:["og:site_name","og:locale","og:image:width","og:image:height"],propertyOnly:!0},twitter:{required:["twitter:card","twitter:title","twitter:image"],important:["twitter:description","twitter:site"],recommended:["twitter:creator","twitter:image:width","twitter:image:height"],nameOnly:!0}}};function t(...t){e.debug&&console.log("[OG Debug]",...t)}function n(e){return e&&e.length?e.some((e=>"error"===e.type))?"error":"warning":"success"}function r(t){return e.colors[t]||e.colors.text}!function(){const i="meta-inspector-pro",s=document,o=s.getElementById(i);if(o)return o.remove();const a=Array.from(s.querySelectorAll("meta"));t("Total meta tags found:",a.length);const p={og:[],twitter:[],errors:[],warnings:[],info:[]};function l(t){const n=e.requirements[t];[...n.required,...n.important,...n.recommended].forEach((r=>{const i=a.find((e=>e.getAttribute("property")===r||e.getAttribute("name")===r)),s=n.required.includes(r),o=n.important.includes(r),l=n.recommended.includes(r);if(i){const n=function(t,n){const r=[],i=n.getAttribute("content")||"",s=n.getAttribute("property"),o=n.getAttribute("name");if(e.requirements.og.propertyOnly&&t.startsWith("og:")&&!s&&r.push({type:"warning",message:"Should use property attribute"}),e.requirements.twitter.nameOnly&&t.startsWith("twitter:")&&!o&&r.push({type:"warning",message:"Should use name attribute"}),"og:url"!==t&&"og:image"!==t&&"twitter:image"!==t||(i.startsWith("http")||r.push({type:"warning",message:"Relative URL"}),i.length>e.limits.url&&r.push({type:"warning",message:`Long URL (>${e.limits.url} chars)`}),/\.(svg|bmp)$/i.test(i)&&r.push({type:"error",message:"Unsupported format"})),t.endsWith("title")&&i.length>e.limits.title&&r.push({type:"warning",message:`Long title (>${e.limits.title} chars)`}),t.endsWith("description")&&(i?i.length>e.limits.description&&r.push({type:"warning",message:`Long description (>${e.limits.description} chars)`}):r.push({type:"warning",message:"Empty description"})),t.includes(":width")||t.includes(":height")){const e=t.includes("twitter")?120:200;parseInt(i)<e&&r.push({type:"warning",message:`Min ${e}px`})}return"og:type"!==t||["website","article","book","profile","music","video"].includes(i)||r.push({type:"warning",message:"Non-standard type"}),"twitter:card"!==t||["summary","summary_large_image","app","player"].includes(i)||r.push({type:"warning",message:"Non-standard card"}),r.length?r:null}(r,i),a=i.getAttribute("content")||"";n&&n.forEach((e=>{"error"===e.type&&p.errors.push(`${r}: ${e.message}`),"warning"===e.type&&p.warnings.push(`${r}: ${e.message}`)})),p[t].push({name:r,value:a,html:i.outerHTML,issues:n,isRequired:s,isImportant:o,isRecommended:l})}else if(s||o){const e=s?"error":"warning",n=`Missing: ${r}`;p[t].push({name:r,value:"",html:"",issues:[{type:e,message:"Not found"}],isRequired:s,isImportant:o,isRecommended:!1}),"error"===e?p.errors.push(n):p.warnings.push(n)}else l&&p.info.push(`Optional missing: ${r}`)}))}function g(e){let t="success";return e.forEach((e=>{const r=n(e.issues);"error"===r?t="error":"warning"===r&&"error"!==t&&(t="warning")})),t}l("og"),l("twitter");const d=g(p.og),c=g(p.twitter),u=p.errors.length?"error":p.warnings.length?"warning":"success",m=s.createElement("div");function f(t){const i=n(t.issues),s=r(i),o=t.isRequired?e.colors.error:e.colors.warning,a=t.value?r(i):o,p=t.isRecommended;return`\n        <div title="${t.html.replace(/"/g,"&quot;")}" \n             style="padding: 8px 0; border-bottom: 1px solid #333; cursor: help;">\n          <div style="display: flex; justify-content: space-between; align-items: flex-start;">\n            <div style="font-weight: ${t.isRequired?"bold":"normal"}; \n                        color: ${p?e.colors.optional:s}; \n                        font-size: 14px;">\n              ${t.name}\n              ${t.issues?`\n                <span style="margin-left: 6px; font-size: 12px;">\n                  ${t.issues.map((e=>`\n                    <span style="color: ${r(e.type)};">\n                      (${e.message})\n                    </span>\n                  `)).join(" ")}\n                </span>\n              `:""}\n            </div>\n            ${t.issues?`\n              <div style="color: ${s}; font-size: 12px;">\n                ${t.issues.some((e=>"error"===e.type))?"⚠":""}\n                ${t.issues.some((e=>"warning"===e.type))?"⚠":""}\n              </div>\n            `:""}\n          </div>\n          <div style="word-break: break-all; \n                     color: ${a}; \n                     margin-top: 4px;\n                     font-size: ${t.value.length>50?"13px":"14px"};">\n            ${t.value||'<span style="color: '+o+'">(missing)</span>'}\n          </div>\n        </div>\n      `}function h(t,i,s=!1){if(!t.length)return"";const o=t.some((e=>"error"===n(e.issues)))?"error":t.some((e=>"warning"===n(e.issues)))?"warning":"success";return`\n        <div style="margin-bottom: ${s?"0":"16px"};">\n          <div style="color: ${s?e.colors.optional:r(o)}; \n                      font-size: 16px; \n                      font-weight: bold;\n                      margin: 16px 0 8px 0;\n                      padding-top: ${s?"8px":"0"};\n                      border-top: ${s?"2px solid #444":"none"};\n                      border-bottom: 1px solid #444;">\n            ${i}\n          </div>\n          ${t.map(f).join("")}\n        </div>\n      `}m.id=i,m.style=`\n      position: fixed;\n      top: 0;\n      left: 0;\n      right: 0;\n      background: ${e.colors.bg};\n      z-index: 9999;\n      padding: 15px;\n      color: ${e.colors.text};\n      font-family: system-ui, sans-serif;\n      max-height: 80vh;\n      overflow: auto;\n      line-height: 1.5;\n      box-shadow: 0 4px 12px rgba(0,0,0,0.3);\n    `;let y=`\n      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">\n        <div style="display: flex; align-items: center; gap: 10px;">\n          <span style="font-size: 24px;">🔍</span>\n          <h3 style="margin: 0; font-size: 18px;">\n            Meta Inspector \n            <span style="color: ${r(u)};">\n              ${"error"===u?"Critical":"warning"===u?"Warning":"Looks Good"}\n            </span>\n          </h3>\n        </div>\n        <button onclick="document.getElementById('${i}').remove()" \n                style="background: ${e.colors.error}; border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer;">\n          Close\n        </button>\n      </div>\n    `;if(y+=`\n      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">\n        \x3c!-- OpenGraph Section --\x3e\n        <div style="background: ${e.colors.panel}; padding: 12px; border-radius: 8px;">\n          <h4 style="margin: 0 0 12px 0; color: ${r(d)}; font-size: 16px; display: flex; align-items: center;">\n            <span style="color: ${r(d)}; margin-right: 8px;">\n              ${"success"===d?"✓":"⚠"}\n            </span>\n            OpenGraph Tags - ${"error"===d?"Critical":"warning"===d?"Warning":"Looks Good"}\n          </h4>\n          ${h(p.og.filter((e=>e.isRequired)),"Required")}\n          ${h(p.og.filter((e=>e.isImportant)),"Important")}\n          ${h(p.og.filter((e=>e.isRecommended)),"Recommended",!0)}\n        </div>\n        \n        \x3c!-- Twitter Section --\x3e\n        <div style="background: ${e.colors.panel}; padding: 12px; border-radius: 8px;">\n          <h4 style="margin: 0 0 12px 0; color: ${r(c)}; font-size: 16px; display: flex; align-items: center;">\n            <span style="color: ${r(c)}; margin-right: 8px;">\n              ${"success"===c?"✓":"⚠"}\n            </span>\n            Twitter Cards - ${"error"===c?"Critical":"warning"===c?"Warning":"Looks Good"}\n          </h4>\n          ${h(p.twitter.filter((e=>e.isRequired)),"Required")}\n          ${h(p.twitter.filter((e=>e.isImportant)),"Important")}\n          ${h(p.twitter.filter((e=>e.isRecommended)),"Recommended",!0)}\n        </div>\n      </div>\n    `,e.debug){const x=a.filter((e=>e.getAttribute("property")?.startsWith("og:")||e.getAttribute("name")?.startsWith("og:"))),b=a.filter((e=>e.getAttribute("property")?.startsWith("twitter:")||e.getAttribute("name")?.startsWith("twitter:")));function w(e){const t=e.getAttribute("property"),n=e.getAttribute("name"),r=(e.getAttribute("content")||"").substring(0,50);return`&lt;meta ${t?`property="${t}"`:""} ${n?`name="${n}"`:""} content="${r}${r.length>50?"...":""}"&gt;`}y+=`\n        <div style="background: #333; padding: 12px; border-radius: 8px;">\n          <h4 style="margin: 0 0 10px 0; color: #aaa; font-size: 16px;">Debug Info</h4>\n          <div style="font-family: monospace; font-size: 12px; color: #ccc;">\n            <strong>OpenGraph Tags:</strong><br>\n            ${x.map(w).join("<br>")||"No OpenGraph tags found"}\n            <br><br>\n            <strong>Twitter Tags:</strong><br>\n            ${b.map(w).join("<br>")||"No Twitter tags found"}\n          </div>\n        </div>\n      `}y+='\n      <div style="text-align: center; color: #666; margin-top: 16px; font-size: 12px;">\n        © Pavel Medvedev | github.com/pablonix/seo\n      </div>\n    ',m.innerHTML=y,s.body.prepend(m),t("Scan results:",p)}()}();
 ```
 
 Full code
@@ -41,13 +41,13 @@ javascript:(function(){
     },
     requirements: {
       og: {
-        critical: ['og:title', 'og:type', 'og:image', 'og:url'],
+        required: ['og:title', 'og:type', 'og:image', 'og:url'],
         important: ['og:description'],
         recommended: ['og:site_name', 'og:locale', 'og:image:width', 'og:image:height'],
         propertyOnly: true
       },
       twitter: {
-        critical: ['twitter:card', 'twitter:title', 'twitter:image'],
+        required: ['twitter:card', 'twitter:title', 'twitter:image'],
         important: ['twitter:description', 'twitter:site'],
         recommended: ['twitter:creator', 'twitter:image:width', 'twitter:image:height'],
         nameOnly: true
@@ -104,13 +104,13 @@ javascript:(function(){
       }
       
       if (CONFIG.requirements.twitter.nameOnly && tagName.startsWith('twitter:') && !name) {
-        issues.push({type: 'error', message: 'Must use name attribute'});
+        issues.push({type: 'warning', message: 'Should use name attribute'});
       }
 
-      // URL validation (only for actual URL fields)
+      // URL validation
       if (tagName === 'og:url' || tagName === 'og:image' || tagName === 'twitter:image') {
         if (!value.startsWith('http')) {
-          issues.push({type: 'error', message: 'Relative URL'});
+          issues.push({type: 'warning', message: 'Relative URL'});
         }
         if (value.length > CONFIG.limits.url) {
           issues.push({type: 'warning', message: `Long URL (>${CONFIG.limits.url} chars)`});
@@ -136,7 +136,7 @@ javascript:(function(){
         }
       }
 
-      // Dimension validation (only for dimension fields)
+      // Dimension validation
       if (tagName.includes(':width') || tagName.includes(':height')) {
         const minSize = tagName.includes('twitter') ? 120 : 200;
         if (parseInt(value) < minSize) {
@@ -160,13 +160,13 @@ javascript:(function(){
     function processTags(namespace) {
       const config = CONFIG.requirements[namespace];
       
-      [...config.critical, ...config.important, ...config.recommended].forEach(tagName => {
+      [...config.required, ...config.important, ...config.recommended].forEach(tagName => {
         const meta = allMetaTags.find(m => 
           (m.getAttribute('property') === tagName) || 
           (m.getAttribute('name') === tagName)
         );
         
-        const isCritical = config.critical.includes(tagName);
+        const isRequired = config.required.includes(tagName);
         const isImportant = config.important.includes(tagName);
         const isRecommended = config.recommended.includes(tagName);
         
@@ -186,12 +186,12 @@ javascript:(function(){
             value: value,
             html: meta.outerHTML,
             issues: issues,
-            isCritical,
+            isRequired,
             isImportant,
             isRecommended
           });
-        } else if (isCritical || isImportant) {
-          const issueType = isCritical ? 'error' : 'warning';
+        } else if (isRequired || isImportant) {
+          const issueType = isRequired ? 'error' : 'warning';
           const message = `Missing: ${tagName}`;
           
           results[namespace].push({
@@ -199,7 +199,7 @@ javascript:(function(){
             value: '',
             html: '',
             issues: [{type: issueType, message: 'Not found'}],
-            isCritical,
+            isRequired,
             isImportant,
             isRecommended: false
           });
@@ -215,6 +215,21 @@ javascript:(function(){
     // Process all namespaces
     processTags('og');
     processTags('twitter');
+
+    // Calculate namespace severities
+    function calculateNamespaceSeverity(tags) {
+      let severity = 'success';
+      tags.forEach(tag => {
+        const tagSeverity = getTagSeverity(tag.issues);
+        if (tagSeverity === 'error') severity = 'error';
+        else if (tagSeverity === 'warning' && severity !== 'error') severity = 'warning';
+      });
+      return severity;
+    }
+
+    const ogSeverity = calculateNamespaceSeverity(results.og);
+    const twitterSeverity = calculateNamespaceSeverity(results.twitter);
+    const overallSeverity = results.errors.length ? 'error' : results.warnings.length ? 'warning' : 'success';
 
     // Create panel
     const panel = doc.createElement('div');
@@ -239,14 +254,15 @@ javascript:(function(){
     function renderTag(tag) {
       const severity = getTagSeverity(tag.issues);
       const titleColor = getTextColor(severity);
-      const valueColor = tag.value ? getTextColor(severity) : CONFIG.colors.error;
+      const missingColor = tag.isRequired ? CONFIG.colors.error : CONFIG.colors.warning;
+      const valueColor = tag.value ? getTextColor(severity) : missingColor;
       const isOptional = tag.isRecommended;
       
       return `
         <div title="${tag.html.replace(/"/g, '&quot;')}" 
              style="padding: 8px 0; border-bottom: 1px solid #333; cursor: help;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <div style="font-weight: ${tag.isCritical ? 'bold' : 'normal'}; 
+            <div style="font-weight: ${tag.isRequired ? 'bold' : 'normal'}; 
                         color: ${isOptional ? CONFIG.colors.optional : titleColor}; 
                         font-size: 14px;">
               ${tag.name}
@@ -271,7 +287,7 @@ javascript:(function(){
                      color: ${valueColor}; 
                      margin-top: 4px;
                      font-size: ${tag.value.length > 50 ? '13px' : '14px'};">
-            ${tag.value || '<span style="color: #ff5555">(missing)</span>'}
+            ${tag.value || '<span style="color: ' + missingColor + '">(missing)</span>'}
           </div>
         </div>
       `;
@@ -281,15 +297,17 @@ javascript:(function(){
       if (!tags.length) return '';
       
       const severity = tags.some(t => getTagSeverity(t.issues) === 'error') ? 'error' : 
-                      tags.some(t => getTagSeverity(t.issues) === 'warning') ? 'warning' : 'success';
+                       tags.some(t => getTagSeverity(t.issues) === 'warning') ? 'warning' : 'success';
       
       return `
         <div style="margin-bottom: ${isRecommended ? '0' : '16px'};">
           <div style="color: ${isRecommended ? CONFIG.colors.optional : getTextColor(severity)}; 
-                      font-size: 14px; 
-                      margin-bottom: 8px;
+                      font-size: 16px; 
+                      font-weight: bold;
+                      margin: 16px 0 8px 0;
                       padding-top: ${isRecommended ? '8px' : '0'};
-                      border-top: ${isRecommended ? '1px solid #333' : 'none'};">
+                      border-top: ${isRecommended ? '2px solid #444' : 'none'};
+                      border-bottom: 1px solid #444;">
             ${title}
           </div>
           ${tags.map(renderTag).join('')}
@@ -304,14 +322,9 @@ javascript:(function(){
           <span style="font-size: 24px;">🔍</span>
           <h3 style="margin: 0; font-size: 18px;">
             Meta Inspector 
-            <span style="color: ${results.errors.length ? CONFIG.colors.error : CONFIG.colors.success};">
-              ${results.errors.length || '✓'}
+            <span style="color: ${getTextColor(overallSeverity)};">
+              ${overallSeverity === 'error' ? 'Critical' : overallSeverity === 'warning' ? 'Warning' : 'Looks Good'}
             </span>
-            ${results.warnings.length ? `
-              <span style="color: ${CONFIG.colors.warning}; margin-left: 8px;">
-                ${results.warnings.length} warnings
-              </span>
-            ` : ''}
           </h3>
         </div>
         <button onclick="document.getElementById('${panelId}').remove()" 
@@ -326,22 +339,26 @@ javascript:(function(){
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
         <!-- OpenGraph Section -->
         <div style="background: ${CONFIG.colors.panel}; padding: 12px; border-radius: 8px;">
-          <h4 style="margin: 0 0 12px 0; color: #aaa; font-size: 16px; display: flex; align-items: center;">
-            <span style="color: #1877f2; margin-right: 8px;">✓</span>
-            OpenGraph Tags
+          <h4 style="margin: 0 0 12px 0; color: ${getTextColor(ogSeverity)}; font-size: 16px; display: flex; align-items: center;">
+            <span style="color: ${getTextColor(ogSeverity)}; margin-right: 8px;">
+              ${ogSeverity === 'success' ? '✓' : '⚠'}
+            </span>
+            OpenGraph Tags - ${ogSeverity === 'error' ? 'Critical' : ogSeverity === 'warning' ? 'Warning' : 'Looks Good'}
           </h4>
-          ${renderSection(results.og.filter(t => t.isCritical), 'Critical')}
+          ${renderSection(results.og.filter(t => t.isRequired), 'Required')}
           ${renderSection(results.og.filter(t => t.isImportant), 'Important')}
           ${renderSection(results.og.filter(t => t.isRecommended), 'Recommended', true)}
         </div>
         
         <!-- Twitter Section -->
         <div style="background: ${CONFIG.colors.panel}; padding: 12px; border-radius: 8px;">
-          <h4 style="margin: 0 0 12px 0; color: #aaa; font-size: 16px; display: flex; align-items: center;">
-            <span style="color: #1da1f2; margin-right: 8px;">✓</span>
-            Twitter Cards
+          <h4 style="margin: 0 0 12px 0; color: ${getTextColor(twitterSeverity)}; font-size: 16px; display: flex; align-items: center;">
+            <span style="color: ${getTextColor(twitterSeverity)}; margin-right: 8px;">
+              ${twitterSeverity === 'success' ? '✓' : '⚠'}
+            </span>
+            Twitter Cards - ${twitterSeverity === 'error' ? 'Critical' : twitterSeverity === 'warning' ? 'Warning' : 'Looks Good'}
           </h4>
-          ${renderSection(results.twitter.filter(t => t.isCritical), 'Critical')}
+          ${renderSection(results.twitter.filter(t => t.isRequired), 'Required')}
           ${renderSection(results.twitter.filter(t => t.isImportant), 'Important')}
           ${renderSection(results.twitter.filter(t => t.isRecommended), 'Recommended', true)}
         </div>
@@ -350,17 +367,31 @@ javascript:(function(){
 
     // Debug info
     if (CONFIG.debug) {
+      const ogTags = allMetaTags.filter(m => 
+        m.getAttribute('property')?.startsWith('og:') || 
+        m.getAttribute('name')?.startsWith('og:')
+      );
+      const twitterTags = allMetaTags.filter(m => 
+        m.getAttribute('property')?.startsWith('twitter:') || 
+        m.getAttribute('name')?.startsWith('twitter:')
+      );
+
+      function renderDebugTag(m) {
+        const property = m.getAttribute('property');
+        const name = m.getAttribute('name');
+        const content = (m.getAttribute('content') || '').substring(0, 50);
+        return `&lt;meta ${property ? `property="${property}"` : ''} ${name ? `name="${name}"` : ''} content="${content}${content.length > 50 ? '...' : ''}"&gt;`;
+      }
+
       panelHTML += `
         <div style="background: #333; padding: 12px; border-radius: 8px;">
           <h4 style="margin: 0 0 10px 0; color: #aaa; font-size: 16px;">Debug Info</h4>
           <div style="font-family: monospace; font-size: 12px; color: #ccc;">
-            Found ${allMetaTags.length} meta tags<br>
-            ${allMetaTags.slice(0, 20).map(m => 
-              `&lt;meta ${m.getAttribute('property') ? `property="${m.getAttribute('property')}"` : ''} 
-              ${m.getAttribute('name') ? `name="${m.getAttribute('name')}"` : ''} 
-              content="${(m.getAttribute('content') || '').substring(0, 50)}${(m.getAttribute('content') || '').length > 50 ? '...' : ''}"&gt;`
-            ).join('<br>')}
-            ${allMetaTags.length > 20 ? `<br>...and ${allMetaTags.length - 20} more` : ''}
+            <strong>OpenGraph Tags:</strong><br>
+            ${ogTags.map(renderDebugTag).join('<br>') || 'No OpenGraph tags found'}
+            <br><br>
+            <strong>Twitter Tags:</strong><br>
+            ${twitterTags.map(renderDebugTag).join('<br>') || 'No Twitter tags found'}
           </div>
         </div>
       `;
