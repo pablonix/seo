@@ -4,7 +4,7 @@
     document.getElementById('px-seo-panel').remove();
   }
 
-  const VERSION = "Pavel Medd, ver 1.8";
+  const VERSION = "Pavel Medvedev, ver 2.0";
 
   // Safe HTML escape
   const safeText = (t) => t ? t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/"/g, "&quot;") : "";
@@ -30,19 +30,20 @@
     const getQ = (doc, selector) => doc.querySelector(selector);
     const getQa = (doc, selector) => Array.from(doc.querySelectorAll(selector));
 
-    // BULLETPROOF META SELECTION
     const liveMetas = getQa(liveDoc, "meta");
     const sourceMetas = getQa(sourceDoc, "meta");
     const findMeta = (metas, name) => metas.find(m => m.name && m.name.toLowerCase() === name);
 
+    // ==========================================
+    // 1. OVERVIEW DATA
+    // ==========================================
     const titleEl = getQ(sourceDoc, "title");
     const descEl = findMeta(sourceMetas, "description") || findMeta(liveMetas, "description");
     const keywEl = findMeta(sourceMetas, "keywords") || findMeta(liveMetas, "keywords");
     const canonical = getQ(sourceDoc, "link[rel=canonical]")?.href || "";
 
-    let alertStr = "";
+    let overviewHtml = "";
 
-    // 1. Smart highlighting for Title and Description length
     const buildTagUI = (name, text, min, max) => {
       let html = "", warn = "";
       if (!text) return `<p><b class="px-red">${name}: missing</b></p>`;
@@ -60,34 +61,94 @@
       return `<p><b class="px-copy" title="Copy ${name}" data-copy="${safeText(text)}">${name}</b> (${len}): ${html}${warn}</p>`;
     };
 
-    alertStr += buildTagUI("Title", titleEl?.textContent?.trim() || "", 50, 60);
-    alertStr += buildTagUI("Description", descEl?.content?.trim() || "", 140, 160);
+    overviewHtml += buildTagUI("Title", titleEl?.textContent?.trim() || "", 50, 60);
+    overviewHtml += buildTagUI("Description", descEl?.content?.trim() || "", 140, 160);
 
-    // 2. H1 Logic
     const h1s = getQa(sourceDoc, "h1").length ? getQa(sourceDoc, "h1") : getQa(liveDoc, "h1");
     if (!h1s.length) {
-      alertStr += `<p><b class="px-red">H1: missing</b></p>`;
+      overviewHtml += `<p><b class="px-red">H1: missing</b></p>`;
     } else if (h1s.length === 1) {
       const t = h1s[0].textContent.trim();
-      alertStr += `<p><b>H1</b> (${t.length}): ${safeText(t)}</p>`;
+      overviewHtml += `<p><b>H1</b> (${t.length}): ${safeText(t)}</p>`;
     } else {
       const tArr = h1s.map(h => { const t = h.textContent.trim(); return `${safeText(t)} (${t.length})`; }).join(' <b>|</b> ');
-      alertStr += `<p><b class="px-red">H1 Multiple (${h1s.length}):</b> <span class="px-red">${tArr}</span></p>`;
+      overviewHtml += `<p><b class="px-red">H1 Multiple (${h1s.length}):</b> <span class="px-red">${tArr}</span></p>`;
     }
 
-    if (keywEl?.content) alertStr += `<p><b>Keywords</b> (${keywEl.content.length}): ${safeText(keywEl.content)}</p>`;
+    if (keywEl?.content) overviewHtml += `<p><b>Keywords</b> (${keywEl.content.length}): ${safeText(keywEl.content)}</p>`;
     
     sourceMetas.forEach(m => {
       const name = m.name?.toLowerCase() || "";
       if (['robots', 'yandex', 'googlebot'].includes(name)) {
         const bad = m.content.includes('noindex') || m.content.includes('nofollow');
-        alertStr += `<p><b>meta ${name}:</b> ${bad ? `<b class="px-red">${safeText(m.content)}</b>` : safeText(m.content)}</p>`;
+        overviewHtml += `<p><b>meta ${name}:</b> ${bad ? `<b class="px-red">${safeText(m.content)}</b>` : safeText(m.content)}</p>`;
       }
     });
 
-    if (canonical) alertStr += `<p><b>Canonical:</b> ${canonical === location.href ? `<a href="${canonical}">${canonical}</a>` : `<a href="${canonical}"><b class="px-red">${canonical}</b></a>`}</p>`;
+    if (canonical) overviewHtml += `<p><b>Canonical:</b> ${canonical === location.href ? `<a href="${canonical}">${canonical}</a>` : `<a href="${canonical}"><b class="px-red">${canonical}</b></a>`}</p>`;
 
-    // 3. Highlight all H1-H6 headings with errors
+    const bcnt = getQa(liveDoc, "b").length, strong = getQa(liveDoc, "strong").length, em = getQa(liveDoc, "em").length;
+    overviewHtml += `<p><b>Tags count:</b> b (${bcnt}), strong (${strong}), em (${em})</p>`;
+
+    let cloneBody = codeBody.cloneNode(true);
+    getQa(cloneBody, "script, style, noscript").forEach(t => t.remove());
+    const bodyText = cloneBody.innerText.replace(/[\r\n\t]/gi, " ").replace(/\s+/g, " ");
+    overviewHtml += `<p><b>Text length:</b> <span title="Without spaces">${bodyText.replace(/\s/g, '').length}</span> | <span title="With spaces">${bodyText.length}</span></p>`;
+
+    // ==========================================
+    // 2. MICRODATA (OpenGraph & Twitter)
+    // ==========================================
+    const ogTags = ['og:title', 'og:description', 'og:url', 'og:image', 'og:type'];
+    const twTags = ['twitter:title', 'twitter:description', 'twitter:card', 'twitter:image', 'twitter:site'];
+    const microData = { og: [], tw: [] };
+    const microErrors = [];
+
+    const checkMicroTag = (tags, isOg) => {
+      tags.forEach(tag => {
+        const attrName = isOg ? 'property' : 'name';
+        let meta = sourceMetas.find(m => (m.getAttribute(attrName) || '').toLowerCase() === tag);
+        if (!meta) meta = liveMetas.find(m => (m.getAttribute(attrName) || '').toLowerCase() === tag);
+
+        if (meta) {
+          const content = meta.getAttribute('content');
+          microData[isOg ? 'og' : 'tw'].push({ name: tag, value: content, html: meta.outerHTML });
+          if (!content) microErrors.push(`Empty content: ${tag}`);
+        } else {
+          microErrors.push(`Missing ${isOg ? 'OpenGraph' : 'Twitter'}: ${tag}`);
+        }
+      });
+    };
+
+    checkMicroTag(ogTags, true);
+    checkMicroTag(twTags, false);
+
+    const renderMicroTable = (dataArr) => {
+      return `<table class="px-table">
+        <tbody>
+          ${dataArr.map(r => `
+            <tr title="${safeText(r.html)}" style="cursor:help;">
+              <td style="width:140px;color:#cbd5e0;font-weight:600;">${r.name}</td>
+              <td>${r.value ? `<span style="word-break:break-all">${safeText(r.value)}</span>` : '<span class="px-red">empty</span>'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+    };
+
+    const microHtml = `
+      ${microErrors.length 
+        ? `<div class="px-error-box"><b class="px-red" style="font-size:15px;margin-bottom:5px;display:block;">Errors (${microErrors.length}):</b><ul style="margin:0;padding-left:18px;">${microErrors.map(e => `<li>${e}</li>`).join('')}</ul></div>` 
+        : `<div class="px-success-box">All required microdata tags are valid!</div>`
+      }
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:15px;">
+        <div><h4 class="px-h3">OpenGraph</h4>${renderMicroTable(microData.og)}</div>
+        <div><h4 class="px-h3">Twitter Cards</h4>${renderMicroTable(microData.tw)}</div>
+      </div>
+    `;
+
+    // ==========================================
+    // 3. HEADINGS H1-H6
+    // ==========================================
     const hdgs = getQa(liveDoc, "h1, h2, h3, h4, h5, h6").map(el => ({
       head: Number(el.localName[1]), text: el.textContent.trim(), error: ""
     }));
@@ -104,11 +165,18 @@
     });
     const h16Str = hdgs.map(h => `<li style="margin-left:${(h.head - 1)*20}px" class="${h.error ? 'px-red' : ''}" title="${h.error}"><span>H${h.head} - ${safeText(h.text) || "[Empty]"}</span></li>`).join("");
 
-    // 4. Links Analysis Setup
+    // ==========================================
+    // 4. LINKS
+    // ==========================================
     const rootDomain = location.hostname.split(".").slice(-2).join(".");
-    const ignoreRe = /^(\[no text\]|Facebook|Twitter|Instagram|LinkedIn|Gmail|e-?mail|Pinterest)$/i;
+    
+    // Hardcoded blacklist function (Socials, Google, Apple, etc.)
+    const isBlacklisted = (url, text) => {
+      const hostRe = /facebook\.com|twitter\.com|t\.co|instagram\.com|linkedin\.com|pinterest\.com|google\.|youtube\.com|youtu\.be|apple\.com/i;
+      const textRe = /^(\[no text\]|Facebook|Twitter|Instagram|LinkedIn|Gmail|e-?mail|Pinterest)$/i;
+      return hostRe.test(url) || textRe.test(text) || text === "[no text]";
+    };
 
-    // LocalStorage Whitelist (Default: site.com)
     let whitelistStr = "site.com";
     try {
       const stored = localStorage.getItem('px_seo_whitelist');
@@ -128,7 +196,6 @@
       return [...new Set(int)].join("");
     })();
 
-    // Advanced dynamic parsing strict domain check
     const parseExtLinks = (doc, domainsArr) => {
       const ext = [];
       getQa(doc, "a[href]").forEach(a => {
@@ -141,9 +208,9 @@
           const linkHost = a.hostname.toLowerCase();
           
           if (domainsArr.length > 0 && domainsArr.some(d => linkHost === d || linkHost.endsWith('.' + d))) {
-            type = 2; // Green highlight
-          } else if (ignoreRe.test(text) || text === "[no text]") {
-            type = 1; // Dimmed
+            type = 2; // Priority (Green/Yellow in highlight)
+          } else if (isBlacklisted(url, text)) {
+            type = 1; // Blacklisted/Dimmed
           }
           ext.push({ u: url, t: text, a: attrs, type });
         } catch(e) {}
@@ -169,7 +236,7 @@
       };
 
       const configHtml = `
-        <div style="margin: 15px; padding: 10px; background: #1a1e29; border: 1px solid #2a2e39; border-radius: 4px;">
+        <div style="margin: 0 0 15px 0; padding: 10px; background: #1a1e29; border: 1px solid #2a2e39; border-radius: 4px;">
           <p style="margin:0 0 5px 0!important; color:#b2b5be; font-size:12px;">Highlight domains (comma separated):</p>
           <div style="display:flex; gap:10px;">
             <input type="text" id="px-whitelist-input" class="px-input-hl" value="${safeText(whitelistStr)}" placeholder="site.com, example.com">
@@ -180,73 +247,84 @@
 
       return `
         ${configHtml}
-        <div style="padding: 0 15px 15px 15px;">
-          <h3 class="px-h3">1. DOM Links (${liveExt.length})</h3>${renderTable(liveExt)}
-          <h3 class="px-h3" style="margin-top:20px;">2. Source Links (${srcExt.length})</h3>${renderTable(srcExt)}
-        </div>
+        <h3 class="px-h3">1. DOM Links (${liveExt.length})</h3>${renderTable(liveExt)}
+        <h3 class="px-h3" style="margin-top:20px;">2. Source Links (${srcExt.length})</h3>${renderTable(srcExt)}
       `;
     };
 
-    // 5. Images and text
+    // ==========================================
+    // 5. IMAGES ALT/TITLE
+    // ==========================================
     let altTitleHtml = "", altCnt = 0;
     getQa(liveDoc, "img[alt]").forEach(i => { if (i.alt) { altCnt++; altTitleHtml += `<li><b>alt</b> — ${safeText(i.alt)}</li>`; }});
     getQa(liveDoc, "body [title]").forEach(t => { if (t.title) { altCnt++; altTitleHtml += `<li><b>title</b> — ${safeText(t.title)}</li>`; }});
 
-    const bcnt = getQa(liveDoc, "b").length, strong = getQa(liveDoc, "strong").length, em = getQa(liveDoc, "em").length;
-    alertStr += `<p><b>Tags count:</b> b (${bcnt}), strong (${strong}), em (${em})</p>`;
 
-    let cloneBody = codeBody.cloneNode(true);
-    getQa(cloneBody, "script, style, noscript").forEach(t => t.remove());
-    const bodyText = cloneBody.innerText.replace(/[\r\n\t]/gi, " ").replace(/\s+/g, " ");
-    alertStr += `<p><b>Text length:</b> <span title="Without spaces">${bodyText.replace(/\s/g, '').length}</span> | <span title="With spaces">${bodyText.length}</span></p>`;
-
-    // CSS
+    // ==========================================
+    // UI BUILDER & CSS
+    // ==========================================
     const css = `
       #px-seo-panel { position:fixed; width:100%; top:0; left:0; z-index:999999999; font-family:Segoe UI, Arial, sans-serif; transition:max-height 0.3s ease; max-height:100vh; display:flex; flex-direction:column; box-shadow:0 4px 12px rgba(0,0,0,0.5); }
       #px-seo-panel.px-minimized { max-height: 42px !important; overflow: hidden; }
-      #px-seo-panel.px-minimized .px-body, #px-seo-panel.px-minimized .px-tabs-content { display: none !important; }
+      #px-seo-panel.px-minimized .px-tab-nav-wrapper, #px-seo-panel.px-minimized .px-tabs-content { display: none !important; }
+      
       .px-header-bar { background:#131722; border-bottom:1px solid #2a2e39; padding:10px 15px; display:flex; justify-content:space-between; align-items:center; color:#b2b5be; }
       .px-header-left { display:flex; align-items:center; gap:15px; }
       .px-version { font-weight:bold; color:#d1d4dc; font-size:14px; }
-      .px-new { color:#f23645; font-size:11px; vertical-align:super; font-weight:bold; }
-      .px-btn-hl { background:#2962ff; color:#fff; padding:4px 10px; border-radius:4px; font-size:12px; cursor:pointer; user-select:none; }
+      
+      .px-btn-hl { background:#2962ff; color:#fff; padding:4px 10px; border-radius:4px; font-size:12px; cursor:pointer; user-select:none; transition: background 0.2s; }
       .px-btn-hl:hover { background:#1e4eb8; }
+      .px-btn-active { background: #089981 !important; }
       .px-input-hl { flex:1; background:#131722; border:1px solid #2a2e39; color:#d1d4dc; padding:4px 8px; border-radius:3px; outline:none; transition: border-color 0.2s; }
       .px-input-hl:focus { border-color: #2962ff; }
+      
       .px-controls { display:flex; gap:15px; font-size:20px; font-weight:bold; user-select:none; }
       .px-controls b { cursor:pointer; transition:color 0.2s; line-height:1; }
       .px-controls b:hover { color:#f23645; }
-      .px-body { background:#131722; padding:15px; max-height:40vh; overflow-y:auto; border-bottom:1px solid #2a2e39; display:block; }
-      .px-body p { margin:0 0 6px 0!important; font-size:14px; line-height:1.4; color:#d1d4dc; }
+      
+      .px-tab-nav-wrapper { background:#131722; padding:0 15px; border-bottom:1px solid #2a2e39; display:flex; flex-wrap:wrap; gap:15px; }
+      .px-tab-btn { cursor:pointer; color:#b2b5be; transition:color 0.2s; padding:12px 0; border-bottom:2px solid transparent; font-size:14px; }
+      .px-tab-btn:hover, .px-tab-btn.active { color:#ffffff; border-bottom-color:#2962ff; }
+      
+      .px-tabs-content { background:#1e222d; max-height:50vh; overflow-y:auto; border-radius:0 0 6px 6px; display:block; }
+      .px-tab-pane { display:none; padding:15px 20px; }
+      .px-tab-pane.active { display:block; }
+      
+      .px-tab-pane p { margin:0 0 8px 0!important; font-size:14px; line-height:1.5; color:#d1d4dc; }
+      .px-tab-pane ol { margin:0; padding-left:25px; color:#b2b5be; font-size:14px; line-height:1.6; }
+      .px-tab-pane li { margin-bottom:4px; }
+      
       .px-red { color:#f23645!important; }
       .px-warn { font-size:12.5px; font-style:italic; color:#b2b5be; margin-left:8px; }
       .px-copy { text-decoration:underline; cursor:pointer; color:#d1d4dc; }
       .px-copy:hover { color:#2962ff; text-decoration:none; }
-      .px-body a { color:#2962ff; text-decoration:none; }
-      .px-body a:hover { text-decoration:underline; }
-      .px-tab-nav { margin-top:15px!important; padding-top:10px; border-top:1px dashed #2a2e39; }
-      .px-tab-btn { cursor:pointer; color:#b2b5be; transition:color 0.2s; }
-      .px-tab-btn:hover, .px-tab-btn.active { color:#ffffff; border-bottom:1px solid #2962ff; }
-      .px-tabs-content { background:#1e222d; max-height:45vh; overflow-y:auto; border-radius:0 0 6px 6px; display:block; }
-      .px-tab-pane { display:none; }
-      .px-tab-pane.active { display:block; }
-      .px-tab-pane ol { margin:0; padding-left:25px; color:#b2b5be; font-size:14px; line-height:1.6; }
-      .px-tab-pane li { margin-bottom:4px; }
+      .px-tab-pane a { color:#2962ff; text-decoration:none; }
+      .px-tab-pane a:hover { text-decoration:underline; }
+      
       .px-h3 { color:#d1d4dc; font-size:16px; margin:0 0 10px 0; }
       .px-table { width:100%; border-collapse:collapse; font-size:13px; text-align:left; color:#b2b5be; }
       .px-table th, .px-table td { border:1px solid #2a2e39; padding:8px; }
       .px-table th { background:#131722; position:sticky; top:0; color:#fff; font-weight:600; }
       .px-table tr:not([style]):nth-child(even) { background:#1a1e29; }
+      
+      .px-error-box { background: rgba(242,54,69,0.1); border-left: 3px solid #f23645; padding: 12px; margin-bottom: 15px; color:#f7fafc; }
+      .px-success-box { background: rgba(8,153,129,0.1); border-left: 3px solid #089981; padding: 12px; margin-bottom: 15px; color: #089981; font-weight: bold; }
+
+      /* Highlight Link Classes */
+      .px-ext-grey { background-color: #718096 !important; color: #fff !important; font-weight: bold !important; padding: 0 4px !important; border-radius: 3px !important; display: inline-block; }
+      .px-ext-green { background-color: #089981 !important; color: #fff !important; font-weight: bold !important; padding: 0 4px !important; border-radius: 3px !important; display: inline-block; }
+      .px-ext-yellow { background-color: #eab308 !important; color: #000 !important; font-weight: bold !important; padding: 0 4px !important; border-radius: 3px !important; display: inline-block; }
     `;
 
     const getTabNavHtml = (extCount) => `
-      <p class="px-tab-nav">
-        <b class="px-tab-btn" data-target="px-ext">Ext Links <span class="px-new">New!</span> (<span id="px-ext-cnt">${extCount}</span>)</b> |
-        <b class="px-tab-btn" data-target="px-int">Int Links</b> |
-        <b class="px-tab-btn" data-target="px-img">Img alt/title (${altCnt})</b> |
-        <b class="px-tab-btn" data-target="px-hdg">H1-H6 ${hErr ? `<span class="px-red">(${hdgs.length})</span>` : `(${hdgs.length})`}</b> |
-        <b class="px-tab-btn" data-target="px-txt">Clean Text</b>
-      </p>`;
+      <b class="px-tab-btn active" data-target="px-overview">Overview</b>
+      <b class="px-tab-btn" data-target="px-micro">Microdata <span id="px-micro-cnt" style="color:${microErrors.length ? '#f23645' : '#089981'}">(${microErrors.length})</span></b>
+      <b class="px-tab-btn" data-target="px-ext">Ext Links (<span id="px-ext-cnt">${extCount}</span>)</b>
+      <b class="px-tab-btn" data-target="px-int">Int Links</b>
+      <b class="px-tab-btn" data-target="px-img">Img alt/title (${altCnt})</b>
+      <b class="px-tab-btn" data-target="px-hdg">H1-H6 ${hErr ? `<span class="px-red">(${hdgs.length})</span>` : `(${hdgs.length})`}</b>
+      <b class="px-tab-btn" data-target="px-txt">Clean Text</b>
+    `;
 
     const panel = document.createElement("div");
     panel.id = "px-seo-panel";
@@ -256,22 +334,22 @@
         <div class="px-header-left">
           <span class="px-version">${VERSION}</span>
           <div class="px-btn-hl" id="px-hl-toggle">Highlight Tags</div>
+          <div class="px-btn-hl" id="px-hl-ext-toggle">Highlight Ext Links</div>
         </div>
         <div class="px-controls">
           <b id="px-min" title="Minimize">_</b>
           <b id="px-close" title="Close">×</b>
         </div>
       </div>
-      <div class="px-body">
-        ${alertStr}
-        <div id="px-nav-container"></div>
-      </div>
+      <div class="px-tab-nav-wrapper" id="px-nav-container"></div>
       <div class="px-tabs-content">
+        <div class="px-tab-pane active" id="px-overview">${overviewHtml}</div>
+        <div class="px-tab-pane" id="px-micro">${microHtml}</div>
         <div class="px-tab-pane" id="px-ext">${renderExtContent()}</div>
-        <div class="px-tab-pane" id="px-int" style="padding:15px 20px;"><ol>${intLinksHtml}</ol></div>
-        <div class="px-tab-pane" id="px-img" style="padding:15px 20px;"><ol>${altTitleHtml}</ol></div>
-        <div class="px-tab-pane" id="px-hdg" style="padding:15px 20px;"><ol style="list-style:none;padding-left:0;">${h16Str}</ol></div>
-        <div class="px-tab-pane" id="px-txt" style="padding:15px 20px;color:#b2b5be;font-size:14px;white-space:pre-wrap;">${cloneBody.innerHTML}</div>
+        <div class="px-tab-pane" id="px-int"><ol>${intLinksHtml}</ol></div>
+        <div class="px-tab-pane" id="px-img"><ol>${altTitleHtml}</ol></div>
+        <div class="px-tab-pane" id="px-hdg"><ol style="list-style:none;padding-left:0;">${h16Str}</ol></div>
+        <div class="px-tab-pane" id="px-txt" style="color:#b2b5be;font-size:14px;white-space:pre-wrap;">${cloneBody.innerHTML}</div>
       </div>
     `;
     document.body.appendChild(panel);
@@ -280,20 +358,18 @@
     document.getElementById('px-nav-container').innerHTML = getTabNavHtml(extDomCount);
 
     // --- EVENT LISTENERS ---
+
+    // Domain Whitelist Save
     const bindExtListeners = () => {
       const saveBtn = document.getElementById("px-whitelist-save");
       if (saveBtn) {
         saveBtn.onclick = () => {
           const inputVal = document.getElementById("px-whitelist-input").value;
-          
-          // Clean the URLs upon saving
           whitelistStr = cleanDomainsList(inputVal).join(', ');
           
-          try { localStorage.setItem('px_seo_whitelist', whitelistStr); } catch(e) { alert("Local storage is blocked."); }
+          try { localStorage.setItem('px_seo_whitelist', whitelistStr); } catch(e) {}
           
           document.getElementById("px-ext").innerHTML = renderExtContent();
-          
-          // Update the UI value to show the cleaned version
           document.getElementById("px-whitelist-input").value = whitelistStr;
           
           const newExtCount = document.querySelectorAll('#px-ext .px-table:first-of-type tbody tr').length;
@@ -311,9 +387,66 @@
     };
     bindExtListeners();
 
+    // Window Controls
     document.getElementById("px-close").onclick = () => panel.remove();
     document.getElementById("px-min").onclick = () => panel.classList.toggle("px-minimized");
 
+    // Highlight External Links Toggle
+    let extHlActive = false;
+    document.getElementById("px-hl-ext-toggle").onclick = function() {
+      extHlActive = !extHlActive;
+      
+      if (extHlActive) {
+        this.classList.add('px-btn-active');
+        this.textContent = "Ext Links: ON";
+      } else {
+        this.classList.remove('px-btn-active');
+        this.textContent = "Highlight Ext Links";
+      }
+
+      const currentDomains = cleanDomainsList(whitelistStr);
+      const links = getQa(liveDoc, "a[href]");
+
+      links.forEach(a => {
+        if (!a.hostname || a.hostname.endsWith(rootDomain)) return; // skip internal
+
+        const url = a.href;
+        const text = a.innerText?.trim() || "[no text]";
+        
+        // Skip blacklisted ones
+        if (isBlacklisted(url, text)) return;
+
+        if (extHlActive) {
+          const linkHost = a.hostname.toLowerCase();
+          const isPriority = currentDomains.length > 0 && currentDomains.some(d => linkHost === d || linkHost.endsWith('.' + d));
+          const isNofollow = a.rel.toLowerCase().includes("nofollow");
+
+          // Apply Classes
+          if (isPriority && !isNofollow) a.classList.add("px-ext-green");
+          else if (isPriority && isNofollow) a.classList.add("px-ext-yellow");
+          else a.classList.add("px-ext-grey");
+
+          // Apply tooltips (Attributes on new lines)
+          const attrStr = Array.from(a.attributes).map(at => `${at.name}="${at.value}"`).join("\n");
+          a.setAttribute("data-px-orig-title", a.getAttribute("title") || "");
+          a.setAttribute("title", attrStr);
+
+        } else {
+          // Remove Classes
+          a.classList.remove("px-ext-grey", "px-ext-green", "px-ext-yellow");
+          
+          // Restore Tooltips
+          if (a.hasAttribute("data-px-orig-title")) {
+            const orig = a.getAttribute("data-px-orig-title");
+            if (orig) a.setAttribute("title", orig);
+            else a.removeAttribute("title");
+            a.removeAttribute("data-px-orig-title");
+          }
+        }
+      });
+    };
+
+    // Highlight Tags Toggle
     document.getElementById("px-hl-toggle").onclick = () => {
       const hlId = "px-hl-style-node";
       const existing = document.getElementById(hlId);
@@ -322,7 +455,6 @@
       } else {
         const s = document.createElement("style");
         s.id = hlId;
-        // Strict exclusion of the #px-seo-panel and all its children
         s.textContent = `
           strong:not(#px-seo-panel strong)::before{content:"stng - "!important} 
           b:not(#px-seo-panel b)::before{content:"b - "!important} 
@@ -350,6 +482,7 @@
       }
     };
 
+    // Copy Tool
     getQa(panel, ".px-copy").forEach(btn => {
       btn.onclick = (e) => {
         const text = e.target.getAttribute("data-copy");
@@ -367,20 +500,18 @@
       };
     });
 
+    // Tab Navigation
     panel.addEventListener('click', (e) => {
       if (e.target.classList.contains('px-tab-btn')) {
         const targetId = e.target.getAttribute("data-target");
         const targetPane = document.getElementById(targetId);
         
-        if (targetPane.classList.contains("active")) {
-          targetPane.classList.remove("active");
-          e.target.classList.remove("active");
-        } else {
-          getQa(panel, ".px-tab-pane").forEach(p => p.classList.remove("active"));
-          getQa(panel, ".px-tab-btn").forEach(b => b.classList.remove("active"));
-          targetPane.classList.add("active");
-          e.target.classList.add("active");
-        }
+        if (targetPane.classList.contains("active")) return;
+        
+        getQa(panel, ".px-tab-pane").forEach(p => p.classList.remove("active"));
+        getQa(panel, ".px-tab-btn").forEach(b => b.classList.remove("active"));
+        targetPane.classList.add("active");
+        e.target.classList.add("active");
       }
     });
   };
