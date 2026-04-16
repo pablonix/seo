@@ -1,0 +1,1 @@
+javascript:(function(){var s=document.createElement('script');s.src='https://raw.githack.com/pablonix/seo/main/bookmarklets/TDH-fork/TDH.js?v=%27+Date.now();s.setAttribute(%27charset%27,%27utf-8%27);document.head.appendChild(s);})();
