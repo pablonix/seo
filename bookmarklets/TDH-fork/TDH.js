@@ -90,25 +90,60 @@
     };
     codeScriptsDel = codeClear(codeScriptsDel);
 
+    // --- TITLE LOGIC ---
     if (title) {
-      alertStr += "<p><b class='link_sim' title='Copy title to clipboard'>Title</b> <span " + ((title.textContent.length < 30 || title.textContent.length > 150) ? "class='red'" : "") + ">(" + title.textContent.length + "): </span>" + title.textContent + "</p>";
+      let titleText = title.textContent.trim();
+      let tLen = titleText.length;
+      let titleHtml = "";
+      let tWarning = (tLen < 50 || tLen > 60) ? " <span class='red' style='font-size: 13px; font-style: italic; margin-left: 8px;'>(Recommended length: 50–60 characters)</span>" : "";
+      
+      if (tLen < 50) {
+        titleHtml = "<span class='red'>" + titleText + "</span>";
+      } else if (tLen > 60) {
+        titleHtml = titleText.substring(0, 60) + "<span class='red'>" + titleText.substring(60) + "</span>";
+      } else {
+        titleHtml = titleText;
+      }
+      
+      let safeTitle = titleText.replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+      alertStr += "<p><b class='link_sim' title='Copy title to clipboard' data-copy='" + safeTitle + "'>Title</b> (" + tLen + "): " + titleHtml + tWarning + "</p>";
     } else {
       alertStr += "<p><b class='red'>Title: missing</b></p>";
     }
 
+    // --- DESCRIPTION LOGIC ---
     if (descr && descr.content) {
-      alertStr += "<p><b class='link_sim' title='Copy description to clipboard'>Description</b> <span " + ((descr.content.length < 50 || descr.content.length > 250) ? "class='red'" : "") + ">(" + descr.content.length + "): </span>" + descr.content + "</p>";
+      let descText = descr.content.trim();
+      let dLen = descText.length;
+      let descHtml = "";
+      let dWarning = (dLen < 140 || dLen > 160) ? " <span class='red' style='font-size: 13px; font-style: italic; margin-left: 8px;'>(Recommended length: 140–160 characters)</span>" : "";
+      
+      if (dLen < 140) {
+        descHtml = "<span class='red'>" + descText + "</span>";
+      } else if (dLen > 160) {
+        descHtml = descText.substring(0, 160) + "<span class='red'>" + descText.substring(160) + "</span>";
+      } else {
+        descHtml = descText;
+      }
+
+      let safeDesc = descText.replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+      alertStr += "<p><b class='link_sim' title='Copy description to clipboard' data-copy='" + safeDesc + "'>Description</b> (" + dLen + "): " + descHtml + dWarning + "</p>";
     } else {
       alertStr += "<p><b class='red'>Description: missing</b></p>";
     }
 
+    // --- H1 LOGIC ---
     const h1s = code.querySelectorAll('h1').length ? code.querySelectorAll('h1') : document.querySelectorAll('h1');
     if (!h1s.length) {
       alertStr += "<p><b class='red'>H1: missing</b></p>";
     } else if (h1s.length === 1) {
-      alertStr += "<p><b>H1:</b> " + h1s[0].textContent.trim() + "</p>";
+      let h1Text = h1s[0].textContent.trim();
+      alertStr += "<p><b>H1</b> (" + h1Text.length + "): " + h1Text + "</p>";
     } else {
-      const h1Texts = Array.from(h1s).map(h => h.textContent.trim()).join(' <b>|</b> ');
+      const h1Texts = Array.from(h1s).map(h => {
+        let text = h.textContent.trim();
+        return text + " (" + text.length + ")";
+      }).join(' <b>|</b> ');
       alertStr += "<p><b class='red'>H1 Multiple (" + h1s.length + "):</b> <span class='red'>" + h1Texts + "</span></p>";
     }
 
@@ -218,9 +253,10 @@
 
     document.querySelectorAll('.pxtagblock .link_sim').forEach(btn => {
       btn.onclick = (e) => {
+        const copyData = e.target.getAttribute('data-copy');
         const ta = document.createElement('textarea');
         document.body.appendChild(ta);
-        ta.value = e.target.parentNode.lastChild.textContent;
+        ta.value = copyData; // Теперь копируется чистый текст из data-copy
         ta.select();
         document.execCommand('copy');
         document.body.removeChild(ta);
