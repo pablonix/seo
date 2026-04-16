@@ -4,10 +4,17 @@
     document.getElementById('px-seo-panel').remove();
   }
 
-  const VERSION = "Pavel Medd, ver 1.7";
+  const VERSION = "Pavel Medd, ver 1.8";
 
   // Safe HTML escape
   const safeText = (t) => t ? t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/"/g, "&quot;") : "";
+
+  // Strictly clean domain input (removes https, www, paths)
+  const cleanDomainsList = (str) => {
+    return str.split(',')
+      .map(s => s.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('?')[0].split('#')[0].trim().toLowerCase())
+      .filter(s => s.length > 0);
+  };
 
   const initPanel = (sourceText) => {
     const parser = new DOMParser();
@@ -101,14 +108,13 @@
     const rootDomain = location.hostname.split(".").slice(-2).join(".");
     const ignoreRe = /^(\[no text\]|Facebook|Twitter|Instagram|LinkedIn|Gmail|e-?mail|Pinterest)$/i;
 
-    // LocalStorage Whitelist
-    let whitelistStr = "takeprofit.com";
+    // LocalStorage Whitelist (Default: site.com)
+    let whitelistStr = "site.com";
     try {
       const stored = localStorage.getItem('px_seo_whitelist');
       if (stored !== null) whitelistStr = stored;
     } catch(e) {}
 
-    // Parse internal links once
     const intLinksHtml = (() => {
       const int = [];
       getQa(liveDoc, "a[href]").forEach(a => {
@@ -122,8 +128,8 @@
       return [...new Set(int)].join("");
     })();
 
-    // Dynamic External Links parsing
-    const parseExtLinks = (doc, domains) => {
+    // Advanced dynamic parsing strict domain check
+    const parseExtLinks = (doc, domainsArr) => {
       const ext = [];
       getQa(doc, "a[href]").forEach(a => {
         try {
@@ -132,7 +138,9 @@
           const attrs = Array.from(a.attributes).filter(at => at.name !== "href").map(at => `${at.name}="${safeText(at.value)}"`).join(", ");
           
           let type = 0;
-          if (domains.some(d => url.toLowerCase().includes(d.toLowerCase()))) {
+          const linkHost = a.hostname.toLowerCase();
+          
+          if (domainsArr.length > 0 && domainsArr.some(d => linkHost === d || linkHost.endsWith('.' + d))) {
             type = 2; // Green highlight
           } else if (ignoreRe.test(text) || text === "[no text]") {
             type = 1; // Dimmed
@@ -144,9 +152,7 @@
     };
 
     const renderExtContent = () => {
-      // Ensure we don't match empty strings!
-      const currentDomains = whitelistStr.split(',').map(s => s.trim()).filter(s => s.length > 0);
-      
+      const currentDomains = cleanDomainsList(whitelistStr);
       const liveExt = parseExtLinks(liveDoc, currentDomains);
       const srcExt = sourceText ? parseExtLinks(sourceDoc, currentDomains) : [];
 
@@ -164,10 +170,10 @@
 
       const configHtml = `
         <div style="margin: 15px; padding: 10px; background: #1a1e29; border: 1px solid #2a2e39; border-radius: 4px;">
-          <p style="margin:0 0 5px 0!important; color:#b2b5be; font-size:12px;">Highlight URLs containing (comma separated):</p>
+          <p style="margin:0 0 5px 0!important; color:#b2b5be; font-size:12px;">Highlight domains (comma separated):</p>
           <div style="display:flex; gap:10px;">
-            <input type="text" id="px-whitelist-input" class="px-input-hl" value="${safeText(whitelistStr)}">
-            <button id="px-whitelist-save" class="px-btn-hl" style="border:none;">Save & Apply</button>
+            <input type="text" id="px-whitelist-input" class="px-input-hl" value="${safeText(whitelistStr)}" placeholder="site.com, example.com">
+            <button id="px-whitelist-save" class="px-btn-hl" style="border:none;">Save & Clean</button>
           </div>
         </div>
       `;
@@ -233,8 +239,6 @@
       .px-table tr:not([style]):nth-child(even) { background:#1a1e29; }
     `;
 
-    // Tabs navigation logic
-    // We calculate ext count dynamically below
     const getTabNavHtml = (extCount) => `
       <p class="px-tab-nav">
         <b class="px-tab-btn" data-target="px-ext">Ext Links <span class="px-new">New!</span> (<span id="px-ext-cnt">${extCount}</span>)</b> |
@@ -272,31 +276,33 @@
     `;
     document.body.appendChild(panel);
 
-    // Initial render of Nav with correct external count
     const extDomCount = document.querySelectorAll('#px-ext .px-table:first-of-type tbody tr').length;
     document.getElementById('px-nav-container').innerHTML = getTabNavHtml(extDomCount);
 
     // --- EVENT LISTENERS ---
-
-    // Whitelist Save logic
     const bindExtListeners = () => {
       const saveBtn = document.getElementById("px-whitelist-save");
       if (saveBtn) {
         saveBtn.onclick = () => {
           const inputVal = document.getElementById("px-whitelist-input").value;
-          whitelistStr = inputVal;
-          try { localStorage.setItem('px_seo_whitelist', inputVal); } catch(e) { alert("Local storage is blocked."); }
+          
+          // Clean the URLs upon saving
+          whitelistStr = cleanDomainsList(inputVal).join(', ');
+          
+          try { localStorage.setItem('px_seo_whitelist', whitelistStr); } catch(e) { alert("Local storage is blocked."); }
           
           document.getElementById("px-ext").innerHTML = renderExtContent();
           
-          // Update counter in tab navigation
+          // Update the UI value to show the cleaned version
+          document.getElementById("px-whitelist-input").value = whitelistStr;
+          
           const newExtCount = document.querySelectorAll('#px-ext .px-table:first-of-type tbody tr').length;
           document.getElementById("px-ext-cnt").innerText = newExtCount;
 
-          bindExtListeners(); // rebind since innerHTML replaced the button
+          bindExtListeners();
           
-          const orig = saveBtn.textContent;
           const newSaveBtn = document.getElementById("px-whitelist-save");
+          const orig = newSaveBtn.textContent;
           newSaveBtn.textContent = "Saved!";
           newSaveBtn.style.background = "#089981";
           setTimeout(() => { newSaveBtn.textContent = orig; newSaveBtn.style.background = ""; }, 1000);
@@ -305,11 +311,9 @@
     };
     bindExtListeners();
 
-    // Controls
     document.getElementById("px-close").onclick = () => panel.remove();
     document.getElementById("px-min").onclick = () => panel.classList.toggle("px-minimized");
 
-    // Highlighter
     document.getElementById("px-hl-toggle").onclick = () => {
       const hlId = "px-hl-style-node";
       const existing = document.getElementById(hlId);
@@ -318,25 +322,34 @@
       } else {
         const s = document.createElement("style");
         s.id = hlId;
+        // Strict exclusion of the #px-seo-panel and all its children
         s.textContent = `
-          strong::before{content:"stng - "!important} b::before{content:"b - "!important} em::before{content:"em - "!important}
-          strong{background:#690!important;border:solid!important;padding:2px!important;color:#000!important}
-          b{background:#77D7FF!important;border:solid!important;padding:2px!important;color:#000!important}
-          em{background:#b798f5!important;border:solid!important;padding:2px!important;color:#000!important}
-          h1::before{content:"H1 - "!important} h2::before{content:"H2 - "!important} h3::before{content:"H3 - "!important}
-          h4::before{content:"H4 - "!important} h5::before{content:"H5 - "!important} h6::before{content:"H6 - "!important}
-          h1{background:pink!important;border:solid!important;padding:2px!important;color:#000!important}
-          h2{background:orange!important;border:solid!important;padding:2px!important;color:#000!important}
-          h3{background:yellow!important;border:solid!important;padding:2px!important;color:#000!important}
-          h4{background:aquamarine!important;border:solid!important;padding:2px!important;color:#000!important}
-          h5{background:lightskyblue!important;border:solid!important;padding:2px!important;color:#000!important}
-          h6{background:plum!important;border:solid!important;padding:2px!important;color:#000!important}
+          strong:not(#px-seo-panel strong)::before{content:"stng - "!important} 
+          b:not(#px-seo-panel b)::before{content:"b - "!important} 
+          em:not(#px-seo-panel em)::before{content:"em - "!important}
+          
+          strong:not(#px-seo-panel strong){background:#690!important;border:solid!important;padding:2px!important;color:#000!important}
+          b:not(#px-seo-panel b){background:#77D7FF!important;border:solid!important;padding:2px!important;color:#000!important}
+          em:not(#px-seo-panel em){background:#b798f5!important;border:solid!important;padding:2px!important;color:#000!important}
+          
+          h1:not(#px-seo-panel h1)::before{content:"H1 - "!important} 
+          h2:not(#px-seo-panel h2)::before{content:"H2 - "!important} 
+          h3:not(#px-seo-panel h3)::before{content:"H3 - "!important}
+          h4:not(#px-seo-panel h4)::before{content:"H4 - "!important} 
+          h5:not(#px-seo-panel h5)::before{content:"H5 - "!important} 
+          h6:not(#px-seo-panel h6)::before{content:"H6 - "!important}
+          
+          h1:not(#px-seo-panel h1){background:pink!important;border:solid!important;padding:2px!important;color:#000!important}
+          h2:not(#px-seo-panel h2){background:orange!important;border:solid!important;padding:2px!important;color:#000!important}
+          h3:not(#px-seo-panel h3){background:yellow!important;border:solid!important;padding:2px!important;color:#000!important}
+          h4:not(#px-seo-panel h4){background:aquamarine!important;border:solid!important;padding:2px!important;color:#000!important}
+          h5:not(#px-seo-panel h5){background:lightskyblue!important;border:solid!important;padding:2px!important;color:#000!important}
+          h6:not(#px-seo-panel h6){background:plum!important;border:solid!important;padding:2px!important;color:#000!important}
         `;
         document.head.appendChild(s);
       }
     };
 
-    // Copy to clipboard
     getQa(panel, ".px-copy").forEach(btn => {
       btn.onclick = (e) => {
         const text = e.target.getAttribute("data-copy");
@@ -354,7 +367,6 @@
       };
     });
 
-    // Tab switcher
     panel.addEventListener('click', (e) => {
       if (e.target.classList.contains('px-tab-btn')) {
         const targetId = e.target.getAttribute("data-target");
@@ -373,12 +385,11 @@
     });
   };
 
-  // Load Source Code (Fallback to safe XMLHttpRequest)
   const XHR = ('onload' in new XMLHttpRequest()) ? XMLHttpRequest : XDomainRequest;
   const xhr = new XHR();
   xhr.open('GET', window.location.href, true);
   xhr.send();
   xhr.onload = () => initPanel(xhr.responseText);
-  xhr.onerror = () => initPanel(""); // If blocked, still load panel based on Live DOM
+  xhr.onerror = () => initPanel(""); 
 
 })();
