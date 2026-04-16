@@ -1,12 +1,12 @@
 (() => {
-  // Защита от двойного запуска
+  // Prevent duplicate injections
   if (document.getElementById('px-seo-panel')) {
     document.getElementById('px-seo-panel').remove();
   }
 
   const VERSION = "Pavel Medd, ver 1.5";
 
-  // Безопасный эскейп HTML
+  // Safe HTML escape
   const safeText = (t) => t ? t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/"/g, "&quot;") : "";
 
   const initPanel = (sourceText) => {
@@ -23,15 +23,16 @@
     const getQ = (doc, selector) => doc.querySelector(selector);
     const getQa = (doc, selector) => Array.from(doc.querySelectorAll(selector));
 
+    // Fixed the case-insensitive selector syntax
     const titleEl = getQ(sourceDoc, "title");
-    const descEl = getQ(sourceDoc, "meta[name=description]i") || getQ(liveDoc, "meta[name=description]i");
-    const keywEl = getQ(sourceDoc, "meta[name=keywords]i") || getQ(liveDoc, "meta[name=keywords]i");
+    const descEl = getQ(sourceDoc, 'meta[name="description" i]') || getQ(liveDoc, 'meta[name="description" i]');
+    const keywEl = getQ(sourceDoc, 'meta[name="keywords" i]') || getQ(liveDoc, 'meta[name="keywords" i]');
     const metas = getQa(sourceDoc, "meta");
     const canonical = getQ(sourceDoc, "link[rel=canonical]")?.href || "";
 
     let alertStr = "";
 
-    // 1. Умная подсветка длины Title и Description
+    // 1. Smart highlighting for Title and Description length
     const buildTagUI = (name, text, min, max) => {
       let html = "", warn = "";
       if (!text) return `<p><b class="px-red">${name}: missing</b></p>`;
@@ -52,7 +53,7 @@
     alertStr += buildTagUI("Title", titleEl?.textContent?.trim() || "", 50, 60);
     alertStr += buildTagUI("Description", descEl?.content?.trim() || "", 140, 160);
 
-    // 2. Логика H1
+    // 2. H1 Logic
     const h1s = getQa(sourceDoc, "h1").length ? getQa(sourceDoc, "h1") : getQa(liveDoc, "h1");
     if (!h1s.length) {
       alertStr += `<p><b class="px-red">H1: missing</b></p>`;
@@ -67,7 +68,7 @@
     if (keywEl?.content) alertStr += `<p><b>Keywords</b> (${keywEl.content.length}): ${safeText(keywEl.content)}</p>`;
     
     metas.forEach(m => {
-      const name = m.name.toLowerCase();
+      const name = m.name?.toLowerCase() || "";
       if (['robots', 'yandex', 'googlebot'].includes(name)) {
         const bad = m.content.includes('noindex') || m.content.includes('nofollow');
         alertStr += `<p><b>meta ${name}:</b> ${bad ? `<b class="px-red">${safeText(m.content)}</b>` : safeText(m.content)}</p>`;
@@ -76,7 +77,7 @@
 
     if (canonical) alertStr += `<p><b>Canonical:</b> ${canonical === location.href ? `<a href="${canonical}">${canonical}</a>` : `<a href="${canonical}"><b class="px-red">${canonical}</b></a>`}</p>`;
 
-    // 3. Подсветка всех заголовков H1-H6 с ошибками
+    // 3. Highlight all H1-H6 headings with errors
     const hdgs = getQa(liveDoc, "h1, h2, h3, h4, h5, h6").map(el => ({
       head: Number(el.localName[1]), text: el.textContent.trim(), error: ""
     }));
@@ -93,7 +94,7 @@
     });
     const h16Str = hdgs.map(h => `<li style="margin-left:${(h.head - 1)*20}px" class="${h.error ? 'px-red' : ''}" title="${h.error}"><span>H${h.head} - ${safeText(h.text) || "[Empty]"}</span></li>`).join("");
 
-    // 4. Продвинутые ссылки (DOM vs Source)
+    // 4. Advanced links (DOM vs Source)
     const rootDomain = location.hostname.split(".").slice(-2).join(".");
     const ignoreRe = /^(\[no text\]|Facebook|Twitter|Instagram|LinkedIn|Gmail|e-?mail|Pinterest)$/i;
 
@@ -138,7 +139,7 @@
       <h3 class="px-h3" style="margin-top:20px;">2. Source Links (${srcData.ext.length})</h3>${renderExtTable(srcData.ext)}
     `;
 
-    // 5. Изображения и текст
+    // 5. Images and text
     let altTitleHtml = "", altCnt = 0;
     getQa(liveDoc, "img[alt]").forEach(i => { if (i.alt) { altCnt++; altTitleHtml += `<li><b>alt</b> — ${safeText(i.alt)}</li>`; }});
     getQa(liveDoc, "body [title]").forEach(t => { if (t.title) { altCnt++; altTitleHtml += `<li><b>title</b> — ${safeText(t.title)}</li>`; }});
@@ -151,7 +152,7 @@
     const bodyText = cloneBody.innerText.replace(/[\r\n\t]/gi, " ").replace(/\s+/g, " ");
     alertStr += `<p><b>Text length:</b> <span title="Without spaces">${bodyText.replace(/\s/g, '').length}</span> | <span title="With spaces">${bodyText.length}</span></p>`;
 
-    // Вкладки
+    // Tabs
     const tabLinks = `
       <p class="px-tab-nav">
         <b class="px-tab-btn" data-target="px-ext">External Links <span class="px-new">New!</span> (${liveData.ext.length})</b> |
@@ -226,7 +227,7 @@
     `;
     document.body.appendChild(panel);
 
-    // События кнопок
+    // Button events
     document.getElementById("px-close").onclick = () => panel.remove();
     
     document.getElementById("px-min").onclick = () => {
@@ -295,12 +296,12 @@
     });
   };
 
-  // Загрузка Source Code (Откат к безопасному XMLHttpRequest)
+  // Load Source Code (Fallback to safe XMLHttpRequest)
   const XHR = ('onload' in new XMLHttpRequest()) ? XMLHttpRequest : XDomainRequest;
   const xhr = new XHR();
   xhr.open('GET', window.location.href, true);
   xhr.send();
   xhr.onload = () => initPanel(xhr.responseText);
-  xhr.onerror = () => initPanel(""); // Если блок, все равно загрузим панель на базе Live DOM
+  xhr.onerror = () => initPanel(""); // If blocked, still load panel based on Live DOM
 
 })();
