@@ -4,7 +4,7 @@
     document.getElementById('px-seo-panel').remove();
   }
 
-  const VERSION = "Pavel Medvedev, ver 2.0";
+  const VERSION = "Pavel Medvedev, ver 2.1";
 
   // Safe HTML escape
   const safeText = (t) => t ? t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/"/g, "&quot;") : "";
@@ -185,7 +185,8 @@
 
     const intLinksHtml = (() => {
       const int = [];
-      getQa(liveDoc, "a[href]").forEach(a => {
+      // EXCLUDE #px-seo-panel links
+      getQa(liveDoc, "a[href]:not(#px-seo-panel a)").forEach(a => {
         try {
           if (a.hostname && a.hostname.endsWith(rootDomain)) {
             const nof = a.rel.includes("nofollow") ? " <b style='text-decoration:underline'>nofollow</b>" : "";
@@ -198,7 +199,8 @@
 
     const parseExtLinks = (doc, domainsArr) => {
       const ext = [];
-      getQa(doc, "a[href]").forEach(a => {
+      // EXCLUDE #px-seo-panel links
+      getQa(doc, "a[href]:not(#px-seo-panel a)").forEach(a => {
         try {
           if (!a.hostname || a.hostname.endsWith(rootDomain)) return;
           const url = a.href, text = a.innerText?.trim() || "[no text]";
@@ -256,8 +258,8 @@
     // 5. IMAGES ALT/TITLE
     // ==========================================
     let altTitleHtml = "", altCnt = 0;
-    getQa(liveDoc, "img[alt]").forEach(i => { if (i.alt) { altCnt++; altTitleHtml += `<li><b>alt</b> — ${safeText(i.alt)}</li>`; }});
-    getQa(liveDoc, "body [title]").forEach(t => { if (t.title) { altCnt++; altTitleHtml += `<li><b>title</b> — ${safeText(t.title)}</li>`; }});
+    getQa(liveDoc, "img[alt]:not(#px-seo-panel img)").forEach(i => { if (i.alt) { altCnt++; altTitleHtml += `<li><b>alt</b> — ${safeText(i.alt)}</li>`; }});
+    getQa(liveDoc, "body [title]:not(#px-seo-panel *)").forEach(t => { if (t.title) { altCnt++; altTitleHtml += `<li><b>title</b> — ${safeText(t.title)}</li>`; }});
 
 
     // ==========================================
@@ -296,6 +298,7 @@
       
       .px-red { color:#f23645!important; }
       .px-warn { font-size:12.5px; font-style:italic; color:#b2b5be; margin-left:8px; }
+      .px-new { color:#f23645; font-size:11px; vertical-align:super; font-weight:bold; }
       .px-copy { text-decoration:underline; cursor:pointer; color:#d1d4dc; }
       .px-copy:hover { color:#2962ff; text-decoration:none; }
       .px-tab-pane a { color:#2962ff; text-decoration:none; }
@@ -310,10 +313,15 @@
       .px-error-box { background: rgba(242,54,69,0.1); border-left: 3px solid #f23645; padding: 12px; margin-bottom: 15px; color:#f7fafc; }
       .px-success-box { background: rgba(8,153,129,0.1); border-left: 3px solid #089981; padding: 12px; margin-bottom: 15px; color: #089981; font-weight: bold; }
 
-      /* Highlight Link Classes */
-      .px-ext-grey { background-color: #718096 !important; color: #fff !important; font-weight: bold !important; padding: 0 4px !important; border-radius: 3px !important; display: inline-block; }
-      .px-ext-green { background-color: #089981 !important; color: #fff !important; font-weight: bold !important; padding: 0 4px !important; border-radius: 3px !important; display: inline-block; }
-      .px-ext-yellow { background-color: #eab308 !important; color: #000 !important; font-weight: bold !important; padding: 0 4px !important; border-radius: 3px !important; display: inline-block; }
+      /* Highly Visible External Link Highlights */
+      [data-px-ext="grey"] { background-color: #d1d5db !important; color: #000 !important; font-weight: 900 !important; padding: 2px 4px !important; border: 2px solid #000 !important; border-radius: 4px !important; }
+      [data-px-ext="grey"]::before { content: "EXT - " !important; font-size: 0.9em !important; }
+      
+      [data-px-ext="green"] { background-color: #4ade80 !important; color: #000 !important; font-weight: 900 !important; padding: 2px 4px !important; border: 2px solid #000 !important; border-radius: 4px !important; }
+      [data-px-ext="green"]::before { content: "DOFOLLOW - " !important; font-size: 0.9em !important; }
+      
+      [data-px-ext="yellow"] { background-color: #fde047 !important; color: #000 !important; font-weight: 900 !important; padding: 2px 4px !important; border: 2px solid #000 !important; border-radius: 4px !important; }
+      [data-px-ext="yellow"]::before { content: "NOFOLLOW - " !important; font-size: 0.9em !important; }
     `;
 
     const getTabNavHtml = (extCount) => `
@@ -405,7 +413,8 @@
       }
 
       const currentDomains = cleanDomainsList(whitelistStr);
-      const links = getQa(liveDoc, "a[href]");
+      // EXCLUDE our panel!
+      const links = getQa(liveDoc, "a[href]:not(#px-seo-panel a)");
 
       links.forEach(a => {
         if (!a.hostname || a.hostname.endsWith(rootDomain)) return; // skip internal
@@ -421,10 +430,10 @@
           const isPriority = currentDomains.length > 0 && currentDomains.some(d => linkHost === d || linkHost.endsWith('.' + d));
           const isNofollow = a.rel.toLowerCase().includes("nofollow");
 
-          // Apply Classes
-          if (isPriority && !isNofollow) a.classList.add("px-ext-green");
-          else if (isPriority && isNofollow) a.classList.add("px-ext-yellow");
-          else a.classList.add("px-ext-grey");
+          // Apply Data Attributes for CSS
+          if (isPriority && !isNofollow) a.setAttribute("data-px-ext", "green");
+          else if (isPriority && isNofollow) a.setAttribute("data-px-ext", "yellow");
+          else a.setAttribute("data-px-ext", "grey");
 
           // Apply tooltips (Attributes on new lines)
           const attrStr = Array.from(a.attributes).map(at => `${at.name}="${at.value}"`).join("\n");
@@ -432,8 +441,8 @@
           a.setAttribute("title", attrStr);
 
         } else {
-          // Remove Classes
-          a.classList.remove("px-ext-grey", "px-ext-green", "px-ext-yellow");
+          // Remove Data Attributes
+          a.removeAttribute("data-px-ext");
           
           // Restore Tooltips
           if (a.hasAttribute("data-px-orig-title")) {
