@@ -4,7 +4,7 @@
     document.getElementById('px-seo-panel').remove();
   }
 
-  const VERSION = "Pavel Medd, ver 1.6";
+  const VERSION = "Pavel Medd, ver 1.7";
 
   // Safe HTML escape
   const safeText = (t) => t ? t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/"/g, "&quot;") : "";
@@ -23,10 +23,9 @@
     const getQ = (doc, selector) => doc.querySelector(selector);
     const getQa = (doc, selector) => Array.from(doc.querySelectorAll(selector));
 
-    // BULLETPROOF META SELECTION (No complex querySelectors)
+    // BULLETPROOF META SELECTION
     const liveMetas = getQa(liveDoc, "meta");
     const sourceMetas = getQa(sourceDoc, "meta");
-    
     const findMeta = (metas, name) => metas.find(m => m.name && m.name.toLowerCase() === name);
 
     const titleEl = getQ(sourceDoc, "title");
@@ -98,50 +97,89 @@
     });
     const h16Str = hdgs.map(h => `<li style="margin-left:${(h.head - 1)*20}px" class="${h.error ? 'px-red' : ''}" title="${h.error}"><span>H${h.head} - ${safeText(h.text) || "[Empty]"}</span></li>`).join("");
 
-    // 4. Advanced links (DOM vs Source)
+    // 4. Links Analysis Setup
     const rootDomain = location.hostname.split(".").slice(-2).join(".");
     const ignoreRe = /^(\[no text\]|Facebook|Twitter|Instagram|LinkedIn|Gmail|e-?mail|Pinterest)$/i;
 
-    const parseLinks = (doc) => {
-      const ext = [], int = [];
+    // LocalStorage Whitelist
+    let whitelistStr = "takeprofit.com";
+    try {
+      const stored = localStorage.getItem('px_seo_whitelist');
+      if (stored !== null) whitelistStr = stored;
+    } catch(e) {}
+
+    // Parse internal links once
+    const intLinksHtml = (() => {
+      const int = [];
+      getQa(liveDoc, "a[href]").forEach(a => {
+        try {
+          if (a.hostname && a.hostname.endsWith(rootDomain)) {
+            const nof = a.rel.includes("nofollow") ? " <b style='text-decoration:underline'>nofollow</b>" : "";
+            int.push(`<li><a href="${a.href}" target="_blank">${safeText(decodeURIComponent(a.href))}</a>${nof}</li>`);
+          }
+        } catch(e) {}
+      });
+      return [...new Set(int)].join("");
+    })();
+
+    // Dynamic External Links parsing
+    const parseExtLinks = (doc, domains) => {
+      const ext = [];
       getQa(doc, "a[href]").forEach(a => {
         try {
-          if (!a.hostname) return;
+          if (!a.hostname || a.hostname.endsWith(rootDomain)) return;
           const url = a.href, text = a.innerText?.trim() || "[no text]";
-          const nof = a.rel.includes("nofollow") ? " <b style='text-decoration:underline'>nofollow</b>" : "";
-          if (a.hostname.endsWith(rootDomain)) {
-            int.push(`<li><a href="${url}" target="_blank">${safeText(decodeURIComponent(url))}</a>${nof}</li>`);
-          } else {
-            const attrs = Array.from(a.attributes).filter(at => at.name !== "href").map(at => `${at.name}="${safeText(at.value)}"`).join(", ");
-            let type = 0;
-            if (url.includes("takeprofit.com")) type = 2;
-            else if (ignoreRe.test(text) || text === "[no text]") type = 1;
-            ext.push({ u: url, t: text, a: attrs, type });
+          const attrs = Array.from(a.attributes).filter(at => at.name !== "href").map(at => `${at.name}="${safeText(at.value)}"`).join(", ");
+          
+          let type = 0;
+          if (domains.some(d => url.toLowerCase().includes(d.toLowerCase()))) {
+            type = 2; // Green highlight
+          } else if (ignoreRe.test(text) || text === "[no text]") {
+            type = 1; // Dimmed
           }
-        } catch (e) {}
+          ext.push({ u: url, t: text, a: attrs, type });
+        } catch(e) {}
       });
-      return { ext, int: [...new Set(int)].join("") };
+      return ext;
     };
 
-    const renderExtTable = (links) => {
-      if (!links.length) return `<p style="padding:10px;color:#b2b5be;">No links found.</p>`;
-      const sorted = [...links.filter(l => l.type === 2), ...links.filter(l => l.type === 0), ...links.filter(l => l.type === 1)];
-      const rows = sorted.map(l => {
-        let st = "";
-        if (l.type === 2) st = "background:rgba(8,153,129,0.15);color:#089981;font-weight:bold;";
-        else if (l.type === 1) st = "opacity:0.5;";
-        return `<tr style="${st}"><td style="word-break:break-all;"><a href="${l.u}" target="_blank">${l.u}</a></td><td>${safeText(l.t)}</td><td style="font-size:0.85em;color:#888;">${l.a}</td></tr>`;
-      }).join("");
-      return `<table class="px-table"><thead><tr><th>URL</th><th>Anchor</th><th>Attrs</th></tr></thead><tbody>${rows}</tbody></table>`;
-    };
+    const renderExtContent = () => {
+      // Ensure we don't match empty strings!
+      const currentDomains = whitelistStr.split(',').map(s => s.trim()).filter(s => s.length > 0);
+      
+      const liveExt = parseExtLinks(liveDoc, currentDomains);
+      const srcExt = sourceText ? parseExtLinks(sourceDoc, currentDomains) : [];
 
-    const liveData = parseLinks(liveDoc);
-    const srcData = sourceText ? parseLinks(sourceDoc) : { ext: [], int: "" };
-    
-    const extHtml = `
-      <h3 class="px-h3">1. DOM Links (${liveData.ext.length})</h3>${renderExtTable(liveData.ext)}
-      <h3 class="px-h3" style="margin-top:20px;">2. Source Links (${srcData.ext.length})</h3>${renderExtTable(srcData.ext)}
-    `;
+      const renderTable = (links) => {
+        if (!links.length) return `<p style="padding:10px;color:#b2b5be;">No links found.</p>`;
+        const sorted = [...links.filter(l => l.type === 2), ...links.filter(l => l.type === 0), ...links.filter(l => l.type === 1)];
+        const rows = sorted.map(l => {
+          let st = "";
+          if (l.type === 2) st = "background:rgba(8,153,129,0.15);color:#089981;font-weight:bold;";
+          else if (l.type === 1) st = "opacity:0.5;";
+          return `<tr style="${st}"><td style="word-break:break-all;"><a href="${l.u}" target="_blank">${l.u}</a></td><td>${safeText(l.t)}</td><td style="font-size:0.85em;color:#888;">${l.a}</td></tr>`;
+        }).join("");
+        return `<table class="px-table"><thead><tr><th>URL</th><th>Anchor</th><th>Attrs</th></tr></thead><tbody>${rows}</tbody></table>`;
+      };
+
+      const configHtml = `
+        <div style="margin: 15px; padding: 10px; background: #1a1e29; border: 1px solid #2a2e39; border-radius: 4px;">
+          <p style="margin:0 0 5px 0!important; color:#b2b5be; font-size:12px;">Highlight URLs containing (comma separated):</p>
+          <div style="display:flex; gap:10px;">
+            <input type="text" id="px-whitelist-input" class="px-input-hl" value="${safeText(whitelistStr)}">
+            <button id="px-whitelist-save" class="px-btn-hl" style="border:none;">Save & Apply</button>
+          </div>
+        </div>
+      `;
+
+      return `
+        ${configHtml}
+        <div style="padding: 0 15px 15px 15px;">
+          <h3 class="px-h3">1. DOM Links (${liveExt.length})</h3>${renderTable(liveExt)}
+          <h3 class="px-h3" style="margin-top:20px;">2. Source Links (${srcExt.length})</h3>${renderTable(srcExt)}
+        </div>
+      `;
+    };
 
     // 5. Images and text
     let altTitleHtml = "", altCnt = 0;
@@ -156,16 +194,6 @@
     const bodyText = cloneBody.innerText.replace(/[\r\n\t]/gi, " ").replace(/\s+/g, " ");
     alertStr += `<p><b>Text length:</b> <span title="Without spaces">${bodyText.replace(/\s/g, '').length}</span> | <span title="With spaces">${bodyText.length}</span></p>`;
 
-    // Tabs
-    const tabLinks = `
-      <p class="px-tab-nav">
-        <b class="px-tab-btn" data-target="px-ext">External Links <span class="px-new">New!</span> (${liveData.ext.length})</b> |
-        <b class="px-tab-btn" data-target="px-int">Internal Links</b> |
-        <b class="px-tab-btn" data-target="px-img">Img alt/title (${altCnt})</b> |
-        <b class="px-tab-btn" data-target="px-hdg">H1-H6 ${hErr ? `<span class="px-red">(${hdgs.length})</span>` : `(${hdgs.length})`}</b> |
-        <b class="px-tab-btn" data-target="px-txt">Clean Text</b>
-      </p>`;
-
     // CSS
     const css = `
       #px-seo-panel { position:fixed; width:100%; top:0; left:0; z-index:999999999; font-family:Segoe UI, Arial, sans-serif; transition:max-height 0.3s ease; max-height:100vh; display:flex; flex-direction:column; box-shadow:0 4px 12px rgba(0,0,0,0.5); }
@@ -177,6 +205,8 @@
       .px-new { color:#f23645; font-size:11px; vertical-align:super; font-weight:bold; }
       .px-btn-hl { background:#2962ff; color:#fff; padding:4px 10px; border-radius:4px; font-size:12px; cursor:pointer; user-select:none; }
       .px-btn-hl:hover { background:#1e4eb8; }
+      .px-input-hl { flex:1; background:#131722; border:1px solid #2a2e39; color:#d1d4dc; padding:4px 8px; border-radius:3px; outline:none; transition: border-color 0.2s; }
+      .px-input-hl:focus { border-color: #2962ff; }
       .px-controls { display:flex; gap:15px; font-size:20px; font-weight:bold; user-select:none; }
       .px-controls b { cursor:pointer; transition:color 0.2s; line-height:1; }
       .px-controls b:hover { color:#f23645; }
@@ -192,7 +222,7 @@
       .px-tab-btn { cursor:pointer; color:#b2b5be; transition:color 0.2s; }
       .px-tab-btn:hover, .px-tab-btn.active { color:#ffffff; border-bottom:1px solid #2962ff; }
       .px-tabs-content { background:#1e222d; max-height:45vh; overflow-y:auto; border-radius:0 0 6px 6px; display:block; }
-      .px-tab-pane { display:none; padding:15px 20px; }
+      .px-tab-pane { display:none; }
       .px-tab-pane.active { display:block; }
       .px-tab-pane ol { margin:0; padding-left:25px; color:#b2b5be; font-size:14px; line-height:1.6; }
       .px-tab-pane li { margin-bottom:4px; }
@@ -202,6 +232,17 @@
       .px-table th { background:#131722; position:sticky; top:0; color:#fff; font-weight:600; }
       .px-table tr:not([style]):nth-child(even) { background:#1a1e29; }
     `;
+
+    // Tabs navigation logic
+    // We calculate ext count dynamically below
+    const getTabNavHtml = (extCount) => `
+      <p class="px-tab-nav">
+        <b class="px-tab-btn" data-target="px-ext">Ext Links <span class="px-new">New!</span> (<span id="px-ext-cnt">${extCount}</span>)</b> |
+        <b class="px-tab-btn" data-target="px-int">Int Links</b> |
+        <b class="px-tab-btn" data-target="px-img">Img alt/title (${altCnt})</b> |
+        <b class="px-tab-btn" data-target="px-hdg">H1-H6 ${hErr ? `<span class="px-red">(${hdgs.length})</span>` : `(${hdgs.length})`}</b> |
+        <b class="px-tab-btn" data-target="px-txt">Clean Text</b>
+      </p>`;
 
     const panel = document.createElement("div");
     panel.id = "px-seo-panel";
@@ -219,93 +260,16 @@
       </div>
       <div class="px-body">
         ${alertStr}
-        ${tabLinks}
+        <div id="px-nav-container"></div>
       </div>
       <div class="px-tabs-content">
-        <div class="px-tab-pane" id="px-ext" style="padding:0;">${extHtml}</div>
-        <div class="px-tab-pane" id="px-int"><ol>${liveData.int}</ol></div>
-        <div class="px-tab-pane" id="px-img"><ol>${altTitleHtml}</ol></div>
-        <div class="px-tab-pane" id="px-hdg"><ol style="list-style:none;padding-left:0;">${h16Str}</ol></div>
-        <div class="px-tab-pane" id="px-txt" style="color:#b2b5be;font-size:14px;white-space:pre-wrap;">${cloneBody.innerHTML}</div>
+        <div class="px-tab-pane" id="px-ext">${renderExtContent()}</div>
+        <div class="px-tab-pane" id="px-int" style="padding:15px 20px;"><ol>${intLinksHtml}</ol></div>
+        <div class="px-tab-pane" id="px-img" style="padding:15px 20px;"><ol>${altTitleHtml}</ol></div>
+        <div class="px-tab-pane" id="px-hdg" style="padding:15px 20px;"><ol style="list-style:none;padding-left:0;">${h16Str}</ol></div>
+        <div class="px-tab-pane" id="px-txt" style="padding:15px 20px;color:#b2b5be;font-size:14px;white-space:pre-wrap;">${cloneBody.innerHTML}</div>
       </div>
     `;
     document.body.appendChild(panel);
 
-    // Button events
-    document.getElementById("px-close").onclick = () => panel.remove();
-    
-    document.getElementById("px-min").onclick = () => {
-      panel.classList.toggle("px-minimized");
-    };
-
-    document.getElementById("px-hl-toggle").onclick = () => {
-      const hlId = "px-hl-style-node";
-      const existing = document.getElementById(hlId);
-      if (existing) {
-        existing.remove();
-      } else {
-        const s = document.createElement("style");
-        s.id = hlId;
-        s.textContent = `
-          strong::before{content:"stng - "!important} b::before{content:"b - "!important} em::before{content:"em - "!important}
-          strong{background:#690!important;border:solid!important;padding:2px!important;color:#000!important}
-          b{background:#77D7FF!important;border:solid!important;padding:2px!important;color:#000!important}
-          em{background:#b798f5!important;border:solid!important;padding:2px!important;color:#000!important}
-          h1::before{content:"H1 - "!important} h2::before{content:"H2 - "!important} h3::before{content:"H3 - "!important}
-          h4::before{content:"H4 - "!important} h5::before{content:"H5 - "!important} h6::before{content:"H6 - "!important}
-          h1{background:pink!important;border:solid!important;padding:2px!important;color:#000!important}
-          h2{background:orange!important;border:solid!important;padding:2px!important;color:#000!important}
-          h3{background:yellow!important;border:solid!important;padding:2px!important;color:#000!important}
-          h4{background:aquamarine!important;border:solid!important;padding:2px!important;color:#000!important}
-          h5{background:lightskyblue!important;border:solid!important;padding:2px!important;color:#000!important}
-          h6{background:plum!important;border:solid!important;padding:2px!important;color:#000!important}
-        `;
-        document.head.appendChild(s);
-      }
-    };
-
-    getQa(panel, ".px-copy").forEach(btn => {
-      btn.onclick = (e) => {
-        const text = e.target.getAttribute("data-copy");
-        const ta = document.createElement('textarea');
-        document.body.appendChild(ta);
-        ta.value = text;
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        
-        const orig = e.target.textContent;
-        e.target.textContent = "Copied!";
-        e.target.style.color = "#089981";
-        setTimeout(() => { e.target.textContent = orig; e.target.style.color = ""; }, 1000);
-      };
-    });
-
-    const panes = getQa(panel, ".px-tab-pane");
-    const tabBtns = getQa(panel, ".px-tab-btn");
-    tabBtns.forEach(btn => {
-      btn.onclick = (e) => {
-        const targetId = e.target.getAttribute("data-target");
-        const targetPane = document.getElementById(targetId);
-        if (targetPane.classList.contains("active")) {
-          targetPane.classList.remove("active");
-          e.target.classList.remove("active");
-        } else {
-          panes.forEach(p => p.classList.remove("active"));
-          tabBtns.forEach(b => b.classList.remove("active"));
-          targetPane.classList.add("active");
-          e.target.classList.add("active");
-        }
-      };
-    });
-  };
-
-  // Load Source Code (Fallback to safe XMLHttpRequest)
-  const XHR = ('onload' in new XMLHttpRequest()) ? XMLHttpRequest : XDomainRequest;
-  const xhr = new XHR();
-  xhr.open('GET', window.location.href, true);
-  xhr.send();
-  xhr.onload = () => initPanel(xhr.responseText);
-  xhr.onerror = () => initPanel(""); // If blocked, still load panel based on Live DOM
-
-})();
+    // Initial render of Nav with
