@@ -272,4 +272,113 @@
     `;
     document.body.appendChild(panel);
 
-    // Initial render of Nav with
+    // Initial render of Nav with correct external count
+    const extDomCount = document.querySelectorAll('#px-ext .px-table:first-of-type tbody tr').length;
+    document.getElementById('px-nav-container').innerHTML = getTabNavHtml(extDomCount);
+
+    // --- EVENT LISTENERS ---
+
+    // Whitelist Save logic
+    const bindExtListeners = () => {
+      const saveBtn = document.getElementById("px-whitelist-save");
+      if (saveBtn) {
+        saveBtn.onclick = () => {
+          const inputVal = document.getElementById("px-whitelist-input").value;
+          whitelistStr = inputVal;
+          try { localStorage.setItem('px_seo_whitelist', inputVal); } catch(e) { alert("Local storage is blocked."); }
+          
+          document.getElementById("px-ext").innerHTML = renderExtContent();
+          
+          // Update counter in tab navigation
+          const newExtCount = document.querySelectorAll('#px-ext .px-table:first-of-type tbody tr').length;
+          document.getElementById("px-ext-cnt").innerText = newExtCount;
+
+          bindExtListeners(); // rebind since innerHTML replaced the button
+          
+          const orig = saveBtn.textContent;
+          const newSaveBtn = document.getElementById("px-whitelist-save");
+          newSaveBtn.textContent = "Saved!";
+          newSaveBtn.style.background = "#089981";
+          setTimeout(() => { newSaveBtn.textContent = orig; newSaveBtn.style.background = ""; }, 1000);
+        };
+      }
+    };
+    bindExtListeners();
+
+    // Controls
+    document.getElementById("px-close").onclick = () => panel.remove();
+    document.getElementById("px-min").onclick = () => panel.classList.toggle("px-minimized");
+
+    // Highlighter
+    document.getElementById("px-hl-toggle").onclick = () => {
+      const hlId = "px-hl-style-node";
+      const existing = document.getElementById(hlId);
+      if (existing) {
+        existing.remove();
+      } else {
+        const s = document.createElement("style");
+        s.id = hlId;
+        s.textContent = `
+          strong::before{content:"stng - "!important} b::before{content:"b - "!important} em::before{content:"em - "!important}
+          strong{background:#690!important;border:solid!important;padding:2px!important;color:#000!important}
+          b{background:#77D7FF!important;border:solid!important;padding:2px!important;color:#000!important}
+          em{background:#b798f5!important;border:solid!important;padding:2px!important;color:#000!important}
+          h1::before{content:"H1 - "!important} h2::before{content:"H2 - "!important} h3::before{content:"H3 - "!important}
+          h4::before{content:"H4 - "!important} h5::before{content:"H5 - "!important} h6::before{content:"H6 - "!important}
+          h1{background:pink!important;border:solid!important;padding:2px!important;color:#000!important}
+          h2{background:orange!important;border:solid!important;padding:2px!important;color:#000!important}
+          h3{background:yellow!important;border:solid!important;padding:2px!important;color:#000!important}
+          h4{background:aquamarine!important;border:solid!important;padding:2px!important;color:#000!important}
+          h5{background:lightskyblue!important;border:solid!important;padding:2px!important;color:#000!important}
+          h6{background:plum!important;border:solid!important;padding:2px!important;color:#000!important}
+        `;
+        document.head.appendChild(s);
+      }
+    };
+
+    // Copy to clipboard
+    getQa(panel, ".px-copy").forEach(btn => {
+      btn.onclick = (e) => {
+        const text = e.target.getAttribute("data-copy");
+        const ta = document.createElement('textarea');
+        document.body.appendChild(ta);
+        ta.value = text;
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        
+        const orig = e.target.textContent;
+        e.target.textContent = "Copied!";
+        e.target.style.color = "#089981";
+        setTimeout(() => { e.target.textContent = orig; e.target.style.color = ""; }, 1000);
+      };
+    });
+
+    // Tab switcher
+    panel.addEventListener('click', (e) => {
+      if (e.target.classList.contains('px-tab-btn')) {
+        const targetId = e.target.getAttribute("data-target");
+        const targetPane = document.getElementById(targetId);
+        
+        if (targetPane.classList.contains("active")) {
+          targetPane.classList.remove("active");
+          e.target.classList.remove("active");
+        } else {
+          getQa(panel, ".px-tab-pane").forEach(p => p.classList.remove("active"));
+          getQa(panel, ".px-tab-btn").forEach(b => b.classList.remove("active"));
+          targetPane.classList.add("active");
+          e.target.classList.add("active");
+        }
+      }
+    });
+  };
+
+  // Load Source Code (Fallback to safe XMLHttpRequest)
+  const XHR = ('onload' in new XMLHttpRequest()) ? XMLHttpRequest : XDomainRequest;
+  const xhr = new XHR();
+  xhr.open('GET', window.location.href, true);
+  xhr.send();
+  xhr.onload = () => initPanel(xhr.responseText);
+  xhr.onerror = () => initPanel(""); // If blocked, still load panel based on Live DOM
+
+})();
