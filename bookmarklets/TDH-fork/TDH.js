@@ -4,7 +4,7 @@
     document.getElementById('px-seo-panel').remove();
   }
 
-  const VERSION = "Pavel Medd, ver 1.5";
+  const VERSION = "Pavel Medd, ver 1.6";
 
   // Safe HTML escape
   const safeText = (t) => t ? t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/"/g, "&quot;") : "";
@@ -23,11 +23,15 @@
     const getQ = (doc, selector) => doc.querySelector(selector);
     const getQa = (doc, selector) => Array.from(doc.querySelectorAll(selector));
 
-    // Fixed the case-insensitive selector syntax
+    // BULLETPROOF META SELECTION (No complex querySelectors)
+    const liveMetas = getQa(liveDoc, "meta");
+    const sourceMetas = getQa(sourceDoc, "meta");
+    
+    const findMeta = (metas, name) => metas.find(m => m.name && m.name.toLowerCase() === name);
+
     const titleEl = getQ(sourceDoc, "title");
-    const descEl = getQ(sourceDoc, 'meta[name="description" i]') || getQ(liveDoc, 'meta[name="description" i]');
-    const keywEl = getQ(sourceDoc, 'meta[name="keywords" i]') || getQ(liveDoc, 'meta[name="keywords" i]');
-    const metas = getQa(sourceDoc, "meta");
+    const descEl = findMeta(sourceMetas, "description") || findMeta(liveMetas, "description");
+    const keywEl = findMeta(sourceMetas, "keywords") || findMeta(liveMetas, "keywords");
     const canonical = getQ(sourceDoc, "link[rel=canonical]")?.href || "";
 
     let alertStr = "";
@@ -67,7 +71,7 @@
 
     if (keywEl?.content) alertStr += `<p><b>Keywords</b> (${keywEl.content.length}): ${safeText(keywEl.content)}</p>`;
     
-    metas.forEach(m => {
+    sourceMetas.forEach(m => {
       const name = m.name?.toLowerCase() || "";
       if (['robots', 'yandex', 'googlebot'].includes(name)) {
         const bad = m.content.includes('noindex') || m.content.includes('nofollow');
